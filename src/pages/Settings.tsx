@@ -9,9 +9,10 @@ import { useToast } from '@/hooks/useToast'
 import { formatBytes } from '@/lib/format'
 import { toFriendlyMessage } from '@/lib/errors'
 import { getAIServiceConfig, saveAIServiceConfig } from '@/services/aiService'
+import { downloadText, exportLibraryJSON } from '@/lib/backup'
 import type { AIProvider } from '@/types/ai'
 
-const APP_VERSION = '0.1.0'
+const APP_VERSION = '0.8.0'
 
 const themeOptions: { value: ThemePreference; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -147,6 +148,11 @@ export function Settings() {
             </Button>
             <p className="text-xs text-ink/50 dark:text-paper/50">API keys are never stored in the frontend.</p>
           </div>
+        </SectionCard>
+
+        <SectionCard title="Backup">
+          <p className="text-sm text-ink/70 dark:text-paper/70">Export your structured library data as JSON for safekeeping. Binary source files are intentionally excluded from this lightweight backup.</p>
+          <Button className="mt-3" variant="secondary" onClick={async () => downloadText(`rubisco-backup-${new Date().toISOString().slice(0,10)}.json`, await exportLibraryJSON())}>Export library JSON</Button>
         </SectionCard>
 
         <SectionCard title="About">

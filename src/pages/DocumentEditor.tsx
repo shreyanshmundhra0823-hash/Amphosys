@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, Redo2, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Download, Printer, Redo2, Undo2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AddBlockMenu } from '@/components/document/AddBlockMenu'
@@ -78,8 +78,15 @@ function DocumentEditorInner({
           <ArrowLeft className="h-4 w-4" /> Source Material
         </Link>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <SaveIndicator status={editor.saveStatus} />
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="hidden items-center gap-1.5 rounded-md border border-ink/10 bg-paper px-2.5 py-1.5 text-xs font-medium text-ink/70 hover:border-brand-300 hover:text-brand-700 dark:border-paper/10 dark:bg-ink dark:text-paper/70 dark:hover:border-brand-500/40 dark:hover:text-brand-300 sm:flex"
+          >
+            <Printer className="h-3.5 w-3.5" /> Print / PDF
+          </button>
           <button
             type="button"
             aria-label="Undo"
@@ -101,14 +108,24 @@ function DocumentEditorInner({
         </div>
       </div>
 
-      <input
-        value={editor.title}
+      <div className="document-editor-heading mb-4 flex items-start justify-between gap-4">
+        <input
+          value={editor.title}
         onFocus={editor.beginEdit}
         onBlur={editor.endEdit}
         onChange={(e) => editor.setTitleLive(e.target.value)}
         placeholder="Document title"
-        className="mb-4 w-full bg-transparent font-serif text-2xl font-semibold tracking-tight text-ink outline-none placeholder:text-ink/30 dark:text-paper dark:placeholder:text-paper/30 sm:text-3xl"
-      />
+          className="w-full bg-transparent font-serif text-2xl font-semibold tracking-tight text-ink outline-none placeholder:text-ink/30 dark:text-paper dark:placeholder:text-paper/30 sm:text-3xl"
+        />
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="mt-1 flex shrink-0 items-center gap-1.5 rounded-md border border-brand-600/20 px-2.5 py-1.5 text-xs font-semibold text-brand-700 hover:bg-brand-50 dark:border-brand-400/30 dark:text-brand-300 dark:hover:bg-brand-500/10 sm:hidden"
+          aria-label="Print or save as PDF"
+        >
+          <Download className="h-3.5 w-3.5" /> PDF
+        </button>
+      </div>
 
       <RichTextToolbar
         activeBlock={activeBlock}
