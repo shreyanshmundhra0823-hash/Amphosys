@@ -514,9 +514,19 @@ app.post('/api/ai/generate', upload.array('sourceFiles', 5), async (req, res) =>
 
     if (request.sourceText.trim()) chunks.push(...splitTextIntoChunks(request.sourceText))
 
+    // NOTE: this used to be a hard reject — if chunks.length * GEMINI_MAX_OUTPUT_TOKENS
+    // (a worst-case ceiling, not a real cost estimate) exceeded MAX_TOTAL_OUTPUT_TOKENS,
+    // the ENTIRE request was rejected with a 413 before Gemini was ever called. Because
+    // GEMINI_MAX_OUTPUT_TOKENS is the max any one chunk *could* use, not what it actually
+    // uses, this rejected any real textbook PDF longer than ~8-32 pages (depending on
+    // PDF_CHUNK_PAGES) outright — which is almost certainly why "complete PDF" notes were
+    // never generated for normal-length chapters. The real safety net is the per-chunk
+    // retry + auto-bisection + coverage-check pipeline below, which already handles
+    // failures chunk-by-chunk. A long PDF just means more chunks/more calls, which is
+    // fine — it is not a reason to refuse the request. This is now advisory only.
     const theoreticalOutputBudget = chunks.length * GEMINI_MAX_OUTPUT_TOKENS
     if (theoreticalOutputBudget > MAX_TOTAL_OUTPUT_TOKENS) {
-      return sendJsonError(res, 413, `This source would require a theoretical maximum of ${theoreticalOutputBudget.toLocaleString()} output tokens across ${chunks.length} Gemini calls, above the configured total budget of ${MAX_TOTAL_OUTPUT_TOKENS.toLocaleString()}. Reduce chunk size or raise MAX_TOTAL_OUTPUT_TOKENS.`)
+      console.warn(`"${request.title}": theoretical output budget ${theoreticalOutputBudget.toLocaleString()} exceeds MAX_TOTAL_OUTPUT_TOKENS (${MAX_TOTAL_OUTPUT_TOKENS.toLocaleString()}) — proceeding anyway; this is a worst-case estimate, not a real cost.`)
     }
 
     const model = makeModel()

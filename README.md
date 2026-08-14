@@ -59,10 +59,10 @@ API failures and unknown `/api/*` routes are JSON responses, so the frontend can
 
 ## Whole-PDF generation and token budget
 
-PDFs are split into 4-page chunks by default. Each chunk gets up to 65,536 Gemini output tokens, matching the current Gemini 2.5 Flash output limit. The total possible output across a generation is the number of chunks multiplied by the per-chunk limit. `MAX_TOTAL_OUTPUT_TOKENS` is a safety ceiling for that theoretical total; it does not force Gemini to spend that many tokens.
+PDFs are split into 4-page chunks by default. Each chunk gets up to 65,536 Gemini output tokens. `MAX_TOTAL_OUTPUT_TOKENS` is only a logged advisory ceiling on the theoretical worst-case total (chunk count × per-chunk limit) — **it no longer blocks generation**. It used to: any request whose chunk count × `GEMINI_MAX_OUTPUT_TOKENS` exceeded `MAX_TOTAL_OUTPUT_TOKENS` was rejected outright with a 413, before Gemini was ever called. Since `GEMINI_MAX_OUTPUT_TOKENS` is a worst-case ceiling per chunk (not what a chunk actually uses), this rejected any real textbook PDF longer than roughly 32 pages at the recommended settings — which is why complete notes were never generated for normal-length chapters. The real safety net is the per-chunk retry + auto-bisection + coverage-check pipeline, which handles chunk failures individually; a long PDF now just means more Gemini calls, not a rejected request.
 
 Recommended Render environment variables:
 - `GEMINI_MAX_OUTPUT_TOKENS=65536`
 - `PDF_CHUNK_PAGES=4`
-- `MAX_TOTAL_OUTPUT_TOKENS=524288`
+- `MAX_TOTAL_OUTPUT_TOKENS=524288` (advisory/logging only)
 - `MAX_PARALLEL_CHUNKS=3`

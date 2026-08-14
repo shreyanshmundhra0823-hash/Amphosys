@@ -20,11 +20,18 @@ function requireString(value, field) {
 }
 
 function normalizeRuns(value, field) {
+  // Models occasionally drift to a plain string instead of an array of run
+  // objects for a heading/paragraph's text. Coerce rather than fail — the
+  // content is still perfectly usable, just unformatted.
+  if (typeof value === 'string' && value.trim()) {
+    value = [{ text: value }]
+  }
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`${field} must be a non-empty array.`)
   }
 
   return value.map((run, index) => {
+    if (typeof run === 'string') run = { text: run }
     if (!isObject(run)) throw new Error(`${field}[${index}] must be an object.`)
     requireString(run.text, `${field}[${index}].text`)
     const normalized = { text: run.text }
@@ -65,7 +72,21 @@ function normalizeBlock(block, index) {
     case 'bulletList':
     case 'numberedList': {
       if (!Array.isArray(block.items)) throw new Error(`block ${id}.items must be an array.`)
-      const items = block.items.map((item, i) => normalizeRuns(item, `block ${id}.items[${i}]`))
+      // Each item is documented as an array of runs (e.g. [{"text":"..."}]),
+      // but models frequently drift to a plain string or a single run object
+      // per item instead. Coerce those into the expected shape rather than
+      // failing the whole block/chunk over a harmless formatting variation —
+      // that was silently discarding otherwise-good chunks (a likely
+      // contributor to incomplete notes on real PDFs, which are full of
+      // bullet lists).
+      const items = block.items.map((item, i) => {
+        const coerced = typeof item === 'string'
+          ? [{ text: item }]
+          : isObject(item) && typeof item.text === 'string'
+            ? [item]
+            : item
+        return normalizeRuns(coerced, `block ${id}.items[${i}]`)
+      })
       return { id, type: block.type, items }
     }
 
