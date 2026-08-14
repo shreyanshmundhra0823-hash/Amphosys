@@ -74,3 +74,203 @@ html.dark .document-page {
     column-rule-color: rgba(250, 249, 247, 0.12);
   }
 }
+
+/* -------------------------------------------------------------------------
+ * Rubisco Phase 4 design + print system
+ * ------------------------------------------------------------------------- */
+:root {
+  --rubisco-red: #b4232c;
+  --rubisco-red-dark: #8f1820;
+  --rubisco-red-soft: #fff4f4;
+  --rubisco-ink: #242120;
+  --rubisco-paper: #ffffff;
+}
+
+.document-page {
+  color: var(--rubisco-ink);
+  background: var(--rubisco-paper);
+  border: 1px solid rgba(36, 33, 32, 0.12);
+  border-radius: 0;
+  box-shadow: 0 8px 30px rgba(36, 33, 32, 0.06);
+  padding: 1.5rem;
+}
+
+.document-page .document-block {
+  position: relative;
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  margin-bottom: 1rem;
+}
+
+.document-page .document-block[data-block-type="heading"] {
+  break-after: avoid;
+  margin-top: 0.25rem;
+  margin-bottom: 0.9rem;
+}
+
+.document-page .document-block[data-block-type="heading"] > * {
+  border-color: var(--rubisco-red);
+}
+
+.document-page .document-block[data-block-type="heading"] h2 {
+  color: var(--rubisco-red-dark);
+  letter-spacing: -0.01em;
+}
+
+.document-page .document-block[data-block-type="subheading"] {
+  margin-top: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.document-page .document-block[data-block-type="paragraph"] {
+  font-size: 0.88rem;
+  line-height: 1.62;
+}
+
+.document-page table th,
+.document-page table td {
+  border-color: rgba(36, 33, 32, 0.14);
+}
+
+.document-page table thead th {
+  background: var(--rubisco-red-soft);
+  color: var(--rubisco-red-dark);
+  font-weight: 700;
+}
+
+.document-page [data-rubisco-tag="exam"],
+.document-page [data-rubisco-tag="mnemonic"] {
+  break-inside: avoid;
+}
+
+.document-page .rubisco-high-yield {
+  border-left: 3px solid var(--rubisco-red);
+  background: #fff8f8;
+}
+
+@media (min-width: 768px) {
+  .document-page {
+    column-count: 2;
+    column-gap: 2.25rem;
+    column-rule: 1px solid rgba(180, 35, 44, 0.2);
+    padding: 2.5rem 2.25rem;
+  }
+}
+
+@media (min-width: 1100px) {
+  .document-page {
+    max-width: 900px;
+    margin-inline: auto;
+    padding: 2.75rem 2.5rem;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 12mm 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #242120 !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .document-editor-heading,
+  .document-editor-heading + .document-toolbar,
+  nav,
+  aside,
+  header,
+  .no-print,
+  button,
+  input,
+  textarea,
+  [contenteditable="true"]::selection {
+    /* interactive chrome is hidden below by more targeted rules */
+  }
+
+  .document-page {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    column-count: 2 !important;
+    column-gap: 9mm !important;
+    column-rule: 0.35mm solid rgba(180, 35, 44, 0.25) !important;
+  }
+
+  .document-page .document-block {
+    break-inside: avoid !important;
+    -webkit-column-break-inside: avoid !important;
+    margin-bottom: 4mm !important;
+  }
+
+  .document-page .document-block[data-block-type="heading"] {
+    break-after: avoid !important;
+  }
+
+  .document-page .document-block[data-block-type="heading"] > * {
+    border-color: #b4232c !important;
+    box-shadow: none !important;
+  }
+
+  .document-page .document-block[data-block-type="heading"] h2,
+  .document-page .document-block[data-block-type="subheading"] h3 {
+    color: #8f1820 !important;
+  }
+
+  .document-page table thead th {
+    background: #fff4f4 !important;
+    color: #8f1820 !important;
+  }
+
+  .document-page input,
+  .document-page textarea,
+  .document-page [contenteditable="true"] {
+    color: #242120 !important;
+  }
+
+  .document-page .document-block > div:first-child > div:first-child {
+    display: none !important;
+  }
+
+  .document-page .document-block [aria-label="Move up"],
+  .document-page .document-block [aria-label="Move down"],
+  .document-page .document-block [aria-label="Duplicate block"],
+  .document-page .document-block [aria-label="Delete block"] {
+    display: none !important;
+  }
+
+  .document-page .document-block textarea {
+    resize: none !important;
+  }
+
+  .document-page img {
+    max-height: 85mm;
+    object-fit: contain;
+  }
+
+  .document-page .document-block[data-block-type="image"] {
+    text-align: center;
+  }
+
+  .document-page .document-block[data-block-type="image"] input,
+  .document-page .document-block[data-block-type="image"] button,
+  .document-page .document-block[data-block-type="image"] .flex.flex-wrap {
+    display: none !important;
+  }
+}
+
+/* Final polish: touch targets, safe-area spacing and print/export chrome. */
+button, a, select, input, textarea { touch-action: manipulation; }
+@media (max-width: 767px) { .document-page { padding: 1rem; } }
+@media print { .document-editor-heading, .document-toolbar, .no-print, nav, aside, header { display:none !important; } body { margin:0 !important; } }
