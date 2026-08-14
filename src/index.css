@@ -34,3 +34,43 @@
     scrollbar-width: none;
   }
 }
+
+/*
+ * Rubisco document page: the Phase 2 rendering foundation for the two-column
+ * layout. Single column on phones (readable width at small screens), two
+ * columns with a vertical divider from tablet width up. `break-inside: avoid`
+ * on each block keeps a block from being split awkwardly across columns —
+ * and keeps this CSS-only approach compatible with a future print/PDF
+ * export pass, since it doesn't depend on any editor-only JS state.
+ */
+.document-page {
+  background: #ffffff;
+  border: 1px solid rgba(28, 26, 25, 0.08);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+}
+
+.document-page > .document-block {
+  break-inside: avoid;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+  .document-page {
+    column-count: 2;
+    column-gap: 2.5rem;
+    column-rule: 1px solid rgba(28, 26, 25, 0.1);
+    padding: 2.5rem;
+  }
+}
+
+html.dark .document-page {
+  background: #241f1e;
+  border-color: rgba(250, 249, 247, 0.1);
+}
+
+@media (min-width: 768px) {
+  html.dark .document-page {
+    column-rule-color: rgba(250, 249, 247, 0.12);
+  }
+}
