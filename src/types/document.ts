@@ -1,27 +1,40 @@
 /**
- * Future-proof document model.
+ * The Rubisco Document Engine's structured document model (Phase 2).
  *
- * A StudyMaterial (see studyMaterial.ts) can eventually own one generated
- * StudyDocument, made of Sections, made of Blocks. None of this is rendered
- * or generated in Phase 1 — it exists so later phases (AI note generation,
- * the block editor, PDF export) can be built without changing the schema
- * of what already shipped.
+ * A StudyMaterial (see studyMaterial.ts) can own one StudyDocument, made of
+ * Sections, made of Blocks. This is the real, editable model — nothing here
+ * is flattened to HTML or an image. AI generation (Phase 3) will eventually
+ * populate this same structure; it does not exist yet.
+ *
+ * Rich text is represented as an array of TextRun — small styled text
+ * fragments — rather than raw HTML, so formatting survives as data.
  */
+
+export type TextAlign = 'left' | 'center' | 'right'
+export type TextSize = 'sm' | 'base' | 'lg'
+export type FontFamily = 'sans' | 'serif' | 'mono' | 'arial' | 'times'
+
+export interface TextRun {
+  text: string
+  bold?: boolean
+  italic?: boolean
+  underline?: boolean
+  /** CSS color value, e.g. '#7A1229'. Omitted means default ink color. */
+  color?: string
+  fontFamily?: FontFamily
+}
 
 export type BlockType =
   | 'heading'
+  | 'subheading'
   | 'paragraph'
   | 'bulletList'
   | 'numberedList'
   | 'table'
   | 'flowchart'
-  | 'callout'
   | 'mnemonic'
-  | 'examPoint'
+  | 'examBox'
   | 'image'
-  | 'divider'
-  | 'question'
-  | 'answer'
 
 export interface BaseBlock {
   id: string
@@ -30,98 +43,100 @@ export interface BaseBlock {
 
 export interface HeadingBlock extends BaseBlock {
   type: 'heading'
-  level: 1 | 2 | 3
-  text: string
+  runs: TextRun[]
+  align?: TextAlign
+}
+
+export interface SubheadingBlock extends BaseBlock {
+  type: 'subheading'
+  runs: TextRun[]
+  align?: TextAlign
 }
 
 export interface ParagraphBlock extends BaseBlock {
   type: 'paragraph'
-  text: string
+  runs: TextRun[]
+  align?: TextAlign
+  size?: TextSize
 }
 
 export interface BulletListBlock extends BaseBlock {
   type: 'bulletList'
-  items: string[]
+  items: TextRun[][]
 }
 
 export interface NumberedListBlock extends BaseBlock {
   type: 'numberedList'
-  items: string[]
+  items: TextRun[][]
 }
 
 export interface TableBlock extends BaseBlock {
   type: 'table'
-  headers: string[]
   rows: string[][]
+  headerRow: boolean
 }
 
+export interface FlowchartNode {
+  id: string
+  text: string
+}
+
+/**
+ * Nodes render as a top-to-bottom sequence connected by arrows, in array
+ * order. This is a deliberate Phase 2 simplification — a genuine structured
+ * flowchart (nodes + auto-derived sequential edges) without a freeform
+ * drag/connect canvas, which is out of scope for this phase. The data
+ * remains structured, so a richer layout can be added later without
+ * changing what's stored.
+ */
 export interface FlowchartBlock extends BaseBlock {
   type: 'flowchart'
-  nodes: { id: string; label: string }[]
-  edges: { from: string; to: string; label?: string }[]
-}
-
-export interface CalloutBlock extends BaseBlock {
-  type: 'callout'
-  variant: 'info' | 'warning' | 'clinical'
-  text: string
+  nodes: FlowchartNode[]
 }
 
 export interface MnemonicBlock extends BaseBlock {
   type: 'mnemonic'
-  phrase: string
-  expansion: string[]
+  title: string
+  content: string
 }
 
-export interface ExamPointBlock extends BaseBlock {
-  type: 'examPoint'
-  text: string
+export interface ExamBoxBlock extends BaseBlock {
+  type: 'examBox'
+  content: string
 }
 
+/**
+ * References an existing SourceAsset (see sourceAsset.ts) by ID rather than
+ * duplicating image bytes into the document. Only materials imported as
+ * images have SourceAssets to pick from in Phase 2.
+ */
 export interface ImageBlock extends BaseBlock {
   type: 'image'
-  assetId: string
+  sourceAssetId?: string
   caption?: string
-}
-
-export interface DividerBlock extends BaseBlock {
-  type: 'divider'
-}
-
-export interface QuestionBlock extends BaseBlock {
-  type: 'question'
-  text: string
-}
-
-export interface AnswerBlock extends BaseBlock {
-  type: 'answer'
-  text: string
 }
 
 export type Block =
   | HeadingBlock
+  | SubheadingBlock
   | ParagraphBlock
   | BulletListBlock
   | NumberedListBlock
   | TableBlock
   | FlowchartBlock
-  | CalloutBlock
   | MnemonicBlock
-  | ExamPointBlock
+  | ExamBoxBlock
   | ImageBlock
-  | DividerBlock
-  | QuestionBlock
-  | AnswerBlock
 
 export interface DocumentSection {
   id: string
-  title?: string
   blocks: Block[]
 }
 
 export interface StudyDocument {
   id: string
   studyMaterialId: string
+  title: string
   sections: DocumentSection[]
   createdAt: number
   updatedAt: number
