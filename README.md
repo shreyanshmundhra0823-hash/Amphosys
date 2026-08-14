@@ -1,96 +1,194 @@
-# Rubisco Medical Library — Phase 1
+# Rubisco Medical Library — Phase 3
 
-A local-first study library foundation for MBBS students, built with React,
-TypeScript, Vite, Tailwind CSS, and Dexie (IndexedDB).
+A local-first study library and structured medical-document platform for MBBS
+students, built with React, TypeScript, Vite, Tailwind CSS, and Dexie
+(IndexedDB).
 
-This is **Phase 1**: the application shell, routing, local-first storage,
-and the create → save → browse → delete flow for study material. AI
-generation, OCR, PDF export, and the revision engine are intentionally not
-implemented yet — see "What's not implemented" below.
+## Five-phase master roadmap
+
+The project is intentionally consolidated into **five longer phases** rather
+than eight short phases:
+
+1. **Phase 1 — Foundation & Source Library**: app shell, routing, local-first
+   storage, PDF/image/text import, source viewer, PWA foundation and settings.
+2. **Phase 2 — Rubisco Document Engine**: structured editable blocks,
+   formatting, tables, flowcharts, images, undo/redo, autosave and the
+   two-column document foundation.
+3. **Phase 3 — AI Study Engine & Rubisco Notes Design System**: provider-
+   agnostic AI generation, structured AI output validation, notes/summary/
+   Q&A/mnemonic/MCQ/revision modes, AI settings, and the core red-heading,
+   high-yield and medical-notes visual hierarchy.
+4. **Phase 4 — Export, Active Recall & Study Management**: high-quality PDF
+   export, print pipeline, MCQ/revision interaction, answers, performance,
+   subjects/topics/tags/search/bookmarks/history and stronger offline study
+   workflows.
+5. **Phase 5 — Production Polish & Release**: tablet/S Pen UX, accessibility,
+   performance, security, large-source testing, error handling, PWA install,
+   GitHub/Render deployment and release hardening.
 
 ## Run it
 
 ```bash
 npm install
-npm run dev       # starts the dev server
-npm run build     # type-checks and builds for production into dist/
-npm run preview   # serves the production build locally
+npm run dev
+npm run build
+npm run preview
 ```
 
-## Deploy on Render
+## Render frontend
 
-This is a static site once built. On Render, create a **Static Site** with:
+The React/Vite frontend remains a **Static Site** on Render:
 
-- **Build command:** `npm install && npm run build`
-- **Publish directory:** `dist`
+- Build command: `npm install && npm run build`
+- Publish directory: `dist`
 
-Push this folder to a GitHub repo and connect it to Render for auto-deploy
-on every push.
+AI provider credentials must not be placed in frontend source code. Phase 3
+uses a backend endpoint for AI calls; that backend can be deployed separately
+without changing the document/editor architecture.
 
-## What Phase 1 supports
+## Phase 3 — AI Study Engine & Rubisco Notes Design System
 
-- Dashboard with a real greeting, library stats (computed from IndexedDB,
-  never fabricated), and a recent-material list.
-- Study Library with search (title, subject, topic, source filename) and
-  sort (recently updated / recently created / alphabetical).
-- Create flow for PDF (single file), image (multiple files — select several
-  at once, remove any before saving), or pasted text, with title/subject/topic
-  metadata, saved as a real local `StudyMaterial` record. Imported images are
-  stored as separate `SourceAsset` rows (see `src/db/sourceAssets.ts`), keyed
-  by `studyMaterialId`, rather than embedded on the material itself.
-- Delete, with a confirmation dialog, that actually removes the record.
-- Settings: theme (system/light/dark, persisted), local storage usage,
-  clear-library with a warning, and version info.
-- A typed, modular Dexie database layer (`src/db`) — no IndexedDB calls
-  live inside components.
-- A future-proof block-based document model (`src/types/document.ts`) and
-  revision-engine types (`src/types/revision.ts`) that nothing writes to
-  yet, so Phase 2 can build on top without a schema rewrite.
-- A provider-agnostic AI service interface (`src/services/aiService.ts`)
-  that intentionally throws if called — nothing fake-generates content.
-- PWA scaffolding (manifest + service worker via `vite-plugin-pwa`) so the
-  shell and saved materials stay available offline after first load.
-- Responsive layout: sidebar nav on desktop/tablet, bottom nav on phone,
-  no horizontal overflow, touch targets sized for a tablet + S Pen.
+### AI architecture
 
-## What's intentionally NOT implemented yet
+The browser does not import Gemini/OpenAI/Claude SDKs and does not store API
+keys. `src/services/aiService.ts` is the single frontend AI boundary. It sends
+source material to a configurable backend endpoint and receives validated,
+structured Rubisco document data.
 
-- AI note generation, OCR, and PDF parsing — `/create` stores the raw file(s)
-  or text only; nothing is processed.
-- The rich document/block editor. `/editor/:id` is currently a **read-only
-  Source Material viewer**: it loads the real saved `StudyMaterial`, updates
-  `lastOpenedAt`, and displays the title/subject/topic/status/dates plus the
-  actual source — pasted text inline, a PDF in an embedded viewer (with an
-  "open in new tab" fallback), or all stored images in a vertical gallery.
-  It cannot yet be edited, and says so on the page ("Full editor will be
-  added in a later phase").
-- The spaced-repetition revision engine at `/revision` — placeholder only.
-- PDF export.
-- Any backend or sync — everything lives in this device's IndexedDB.
+Supported provider identifiers:
+
+- `gemini`
+- `openai`
+- `claude`
+- `local`
+
+Supported generation modes:
+
+- Study notes
+- Summary
+- Question & answer
+- Mnemonics
+- MCQs
+- Revision material
+
+The response is validated by `src/lib/aiValidation.ts` before it can be
+saved to IndexedDB. Invalid JSON, unsupported block types, malformed sections,
+invalid questions, or unsupported providers are rejected rather than silently
+being inserted into the editor.
+
+### Source handling
+
+- **Text** sources are sent as structured source text.
+- **PDF** sources are sent as the stored PDF blob.
+- **Image** sources are loaded from the existing `sourceAssets` table and sent
+  in their original order.
+
+The generated result is saved into the existing `StudyDocument` model. It is
+not flattened into HTML or PDF, so every generated heading, paragraph, table,
+flowchart, mnemonic, exam box and image reference remains editable.
+
+### AI settings
+
+Settings now exposes:
+
+- provider selection
+- backend endpoint
+
+The default endpoint is `/api/ai/generate`. The endpoint is stored in local
+browser settings, and no secret is stored there.
+
+See `docs/AI_BACKEND_CONTRACT.md` for the exact multipart request and JSON
+response contract required by the backend.
+
+### Rubisco visual hierarchy
+
+Phase 3 extends the Phase 2 document foundation with the first core Rubisco
+notes styling:
+
+- white page surface
+- two-column layout on tablet/desktop
+- vertical column divider
+- red major headings in bordered boxes
+- red-accented subheadings
+- red-accented mnemonic boxes
+- high-yield/exam boxes
+- black/ink body text
+- existing tables, flowcharts and image blocks remain structured/editable
+
+The styling is implemented at the block level, not by converting the document
+to a static image.
+
+## Phase 2 document model retained
+
+`src/types/document.ts` remains the source of truth for the editable model.
+A `StudyDocument` contains sections and typed blocks:
+
+- `heading`
+- `subheading`
+- `paragraph`
+- `bulletList`
+- `numberedList`
+- `table`
+- `flowchart`
+- `mnemonic`
+- `examBox`
+- `image`
+
+Rich text remains represented by `TextRun[]`, not raw HTML. Images reference
+existing local `SourceAsset` records instead of duplicating image bytes.
 
 ## Project structure
 
-```
+```text
 src/
-  components/   Reusable UI (AppShell, Sidebar, Card, Modal, FileDropzone…)
-  pages/        One file per route (Dashboard, Library, Create, Settings,
-                SourceMaterial — the read-only viewer at /editor/:id …)
-  layouts/      MainLayout wraps every route in AppShell
-  db/           Dexie schema + StudyMaterial CRUD, plus sourceAssets.ts
-                (stored image blobs, keyed by studyMaterialId) — the only
-                IndexedDB code
-  types/        StudyMaterial, the block-based document model, revision types
-  hooks/        useStudyMaterials, useTheme, useToast, useDeleteMaterial
-  lib/          id generation, date/byte formatting, nav config, AppError
-  services/     aiService.ts — the unimplemented provider abstraction
+  components/
+    ai/
+      GenerationPanel.tsx
+    document/
+      AddBlockMenu.tsx
+      BlockRenderer.tsx
+      BlockShell.tsx
+      RichTextToolbar.tsx
+      TextEditable.tsx
+      blocks/
+        ...one editor per structured block type
+  db/
+    db.ts
+    documents.ts
+    sourceAssets.ts
+    studyMaterials.ts
+  hooks/
+    useDocumentEditor.ts
+    useDocumentHistory.ts
+    useObjectUrl.ts
+    ...
+  lib/
+    aiValidation.ts
+    documentBlocks.ts
+    richText.ts
+    ...
+  pages/
+    SourceMaterial.tsx
+    DocumentEditor.tsx
+    Settings.tsx
+    ...
+  services/
+    aiService.ts
+  types/
+    ai.ts
+    document.ts
+    revision.ts
+    sourceAsset.ts
+    studyMaterial.ts
+
+docs/
+  AI_BACKEND_CONTRACT.md
 ```
 
-## A note on this build
+## Verification note
 
-This project is being developed in a sandboxed environment with no network
-access (`npm install` fails with a 403 from the registry here), so
-`npm install` / `npm run build` still cannot be executed in this
-environment to confirm a green build or generate `package-lock.json`.
-Please run `npm install && npm run build` yourself as the real verification
-step before deploying; if it turns up an error, send me the message and
-I'll fix it directly.
+This ZIP was prepared in a sandbox without reliable npm registry access. A
+real `npm install` could not complete in this environment, so a green
+`npm run build` has **not** been claimed. Run `npm install && npm run build`
+in a networked environment before merging/deploying this phase. No new npm
+dependencies were introduced for Phase 3.
