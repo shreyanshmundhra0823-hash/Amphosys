@@ -1,5 +1,5 @@
 import { TextEditable } from '../TextEditable'
-import type { HeadingBlock, SubheadingBlock, TextRun } from '@/types/document'
+import type { HeadingBlock, SubheadingBlock, TextRun, TextSize } from '@/types/document'
 
 interface Props {
   block: HeadingBlock | SubheadingBlock
@@ -9,8 +9,21 @@ interface Props {
   onBlurBlock: () => void
 }
 
+const HEADING_SIZE_CLASS: Record<TextSize, string> = {
+  sm: 'text-lg sm:text-xl',
+  base: 'text-xl sm:text-2xl',
+  lg: 'text-2xl sm:text-3xl'
+}
+
+const SUBHEADING_SIZE_CLASS: Record<TextSize, string> = {
+  sm: 'text-base',
+  base: 'text-lg',
+  lg: 'text-xl'
+}
+
 export function HeadingBlockEditor({ block, historyVersion, onChange, onFocusBlock, onBlurBlock }: Props) {
   const isHeading = block.type === 'heading'
+  const sizeClass = (isHeading ? HEADING_SIZE_CLASS : SUBHEADING_SIZE_CLASS)[block.size ?? 'base']
 
   const handleRuns = (runs: TextRun[]) => {
     onChange((b) => ({ ...b, runs }))
@@ -34,11 +47,7 @@ export function HeadingBlockEditor({ block, historyVersion, onChange, onFocusBlo
         onBlurEditable={onBlurBlock}
         historyVersion={historyVersion}
         placeholder={isHeading ? 'Heading' : 'Subheading'}
-        className={
-          isHeading
-            ? 'font-serif text-xl font-semibold text-brand-700 dark:text-brand-300 sm:text-2xl'
-            : 'font-serif text-lg font-semibold text-brand-700 dark:text-brand-300'
-        }
+        className={`font-serif font-semibold text-brand-700 dark:text-brand-300 ${sizeClass}`}
       />
     </div>
   )
