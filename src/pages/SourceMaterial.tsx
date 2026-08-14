@@ -1,5 +1,5 @@
 import { FileText, FileWarning } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Card } from '@/components/Card'
 import { EmptyState } from '@/components/EmptyState'
@@ -7,20 +7,10 @@ import { LoadingState } from '@/components/LoadingState'
 import { PageHeader } from '@/components/PageHeader'
 import { getSourceAssets } from '@/db/sourceAssets'
 import { getStudyMaterial, touchLastOpened } from '@/db/studyMaterials'
+import { useObjectUrl } from '@/hooks/useObjectUrl'
 import { formatDate } from '@/lib/format'
 import type { SourceAsset } from '@/types/sourceAsset'
 import type { StudyMaterial } from '@/types/studyMaterial'
-
-/** Creates an object URL for a Blob and revokes it when the blob changes or the component unmounts. */
-function useObjectUrl(blob: Blob | null | undefined): string | null {
-  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob])
-  useEffect(() => {
-    return () => {
-      if (url) URL.revokeObjectURL(url)
-    }
-  }, [url])
-  return url
-}
 
 function StoredImage({ asset }: { asset: SourceAsset }) {
   const url = useObjectUrl(asset.data)
@@ -149,12 +139,17 @@ export function SourceMaterial() {
         </div>
       </Card>
 
-      <div className="mb-5 rounded-lg bg-brand-50 px-4 py-3 text-sm dark:bg-brand-500/10">
-        <span className="font-semibold text-brand-700 dark:text-brand-300">Source Material</span>
-        <span className="text-brand-700/70 dark:text-brand-300/70">
-          {' '}
-          — Full editor will be added in a later phase.
-        </span>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3 text-sm dark:bg-brand-500/10">
+        <div>
+          <span className="font-semibold text-brand-700 dark:text-brand-300">Source Material</span>
+          <span className="text-brand-700/70 dark:text-brand-300/70"> — this is the imported source, read-only.</span>
+        </div>
+        <Link
+          to={`/document/${material.id}`}
+          className="shrink-0 rounded-lg bg-brand-600 px-3.5 py-1.5 text-sm font-medium text-paper hover:bg-brand-700"
+        >
+          Open Document Editor
+        </Link>
       </div>
 
       {material.sourceType === 'text' && (
