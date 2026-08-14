@@ -2,6 +2,7 @@ import { FileText, FileWarning } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Card } from '@/components/Card'
+import { GenerationPanel } from '@/components/ai/GenerationPanel'
 import { EmptyState } from '@/components/EmptyState'
 import { LoadingState } from '@/components/LoadingState'
 import { PageHeader } from '@/components/PageHeader'
@@ -138,6 +139,8 @@ export function SourceMaterial() {
           </p>
         </div>
       </Card>
+
+      <GenerationPanel material={material} />
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-brand-50 px-4 py-3 text-sm dark:bg-brand-500/10">
         <div>
