@@ -14,13 +14,14 @@ const app = express()
 
 const PORT = Number(process.env.PORT || 3000)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'
 const MAX_FILE_MB = Math.min(Math.max(Number(process.env.MAX_FILE_MB || 25), 1), 50)
-const PDF_CHUNK_PAGES = Math.min(Math.max(Number(process.env.PDF_CHUNK_PAGES || 4), 1), 12)
-const MAX_PARALLEL_CHUNKS = Math.min(Math.max(Number(process.env.MAX_PARALLEL_CHUNKS || 3), 1), 5)
+const PDF_CHUNK_PAGES = Math.min(Math.max(Number(process.env.PDF_CHUNK_PAGES || 3), 1), 12)
+const MAX_PARALLEL_CHUNKS = Math.min(Math.max(Number(process.env.MAX_PARALLEL_CHUNKS || 2), 1), 5)
 const GEMINI_MAX_OUTPUT_TOKENS = Math.min(Math.max(Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 65536), 8192), 65536)
 const TEXT_CHUNK_CHARS = Math.min(Math.max(Number(process.env.TEXT_CHUNK_CHARS || 30000), 10000), 60000)
 const MAX_TOTAL_OUTPUT_TOKENS = Math.max(Number(process.env.MAX_TOTAL_OUTPUT_TOKENS || 524288), GEMINI_MAX_OUTPUT_TOKENS)
+const CHUNK_MAX_RETRIES = Math.min(Math.max(Number(process.env.CHUNK_MAX_RETRIES || 3), 0), 5)
 
 if (!GEMINI_API_KEY) {
   console.error('FATAL: GEMINI_API_KEY is not set. Add it to the Render environment variables.')
@@ -148,6 +149,27 @@ function createChunkId(prefix = 'chunk') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }
 
+async function buildPdfChunkFromRange(sourcePdf, originalName, start, end, sourceBuffer) {
+  // start/end are 0-based [start, end) page indices.
+  const chunkPdf = await PDFDocument.create()
+  const pages = await chunkPdf.copyPages(sourcePdf, Array.from({ length: end - start }, (_, i) => start + i))
+  pages.forEach((page) => chunkPdf.addPage(page))
+  const bytes = await chunkPdf.save()
+  return {
+    kind: 'pdf',
+    data: Buffer.from(bytes),
+    mimeType: 'application/pdf',
+    label: `${originalName} — pages ${start + 1}-${end}`,
+    pageStart: start + 1,
+    pageEnd: end,
+    // Kept so a failing chunk can be re-split into smaller page ranges from
+    // the ORIGINAL source bytes (not the already-shrunk chunk bytes), which
+    // keeps embedded fonts/images intact at any bisection depth.
+    sourceBuffer,
+    originalName
+  }
+}
+
 async function splitPdfIntoChunks(buffer, originalName) {
   const sourcePdf = await PDFDocument.load(buffer, { ignoreEncryption: true })
   const pageCount = sourcePdf.getPageCount()
@@ -156,20 +178,24 @@ async function splitPdfIntoChunks(buffer, originalName) {
   const chunks = []
   for (let start = 0; start < pageCount; start += PDF_CHUNK_PAGES) {
     const end = Math.min(start + PDF_CHUNK_PAGES, pageCount)
-    const chunkPdf = await PDFDocument.create()
-    const pages = await chunkPdf.copyPages(sourcePdf, Array.from({ length: end - start }, (_, i) => start + i))
-    pages.forEach((page) => chunkPdf.addPage(page))
-    const bytes = await chunkPdf.save()
-    chunks.push({
-      kind: 'pdf',
-      data: Buffer.from(bytes),
-      mimeType: 'application/pdf',
-      label: `${originalName} — pages ${start + 1}-${end}`,
-      pageStart: start + 1,
-      pageEnd: end
-    })
+    chunks.push(await buildPdfChunkFromRange(sourcePdf, originalName, start, end, buffer))
   }
   return chunks
+}
+
+/**
+ * Splits a failing PDF chunk into two half-size page-range chunks, built
+ * fresh from the ORIGINAL source bytes (chunk.sourceBuffer), not from the
+ * already-generated (and failing) chunk bytes.
+ */
+async function bisectPdfChunk(chunk) {
+  const sourcePdf = await PDFDocument.load(chunk.sourceBuffer, { ignoreEncryption: true })
+  const startIdx = chunk.pageStart - 1
+  const endIdx = chunk.pageEnd
+  const mid = startIdx + Math.ceil((endIdx - startIdx) / 2)
+  const first = await buildPdfChunkFromRange(sourcePdf, chunk.originalName, startIdx, mid, chunk.sourceBuffer)
+  const second = await buildPdfChunkFromRange(sourcePdf, chunk.originalName, mid, endIdx, chunk.sourceBuffer)
+  return [first, second]
 }
 
 function splitTextIntoChunks(text) {
@@ -231,6 +257,67 @@ async function generateOneChunk(model, request, chunk, chunkIndex, totalChunks) 
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Retries a single chunk up to CHUNK_MAX_RETRIES times, with a short
+ * backoff between attempts (helps with transient rate-limit failures, not
+ * just content-driven truncation). Never throws.
+ */
+async function generateOneChunkWithRetries(model, request, chunk, chunkIndex, totalChunks) {
+  let lastError = null
+  for (let attempt = 0; attempt <= CHUNK_MAX_RETRIES; attempt += 1) {
+    try {
+      const validated = await generateOneChunk(model, request, chunk, chunkIndex, totalChunks)
+      if (attempt > 0) {
+        console.log(`Chunk ${chunkIndex + 1}/${totalChunks} (${chunk.label}) succeeded on retry ${attempt}.`)
+      }
+      return { ok: true, chunk, validated }
+    } catch (error) {
+      lastError = error
+      console.error(`Chunk ${chunkIndex + 1}/${totalChunks} (${chunk.label}) attempt ${attempt + 1}/${CHUNK_MAX_RETRIES + 1} failed:`, error?.message)
+      if (attempt < CHUNK_MAX_RETRIES) await sleep(800 * (attempt + 1))
+    }
+  }
+  return { ok: false, chunk, error: lastError }
+}
+
+/**
+ * The real "never give up" layer: if a PDF chunk still fails after every
+ * retry, split it into two half-size page ranges (built from the ORIGINAL
+ * source bytes) and recurse on each half. A one-page chunk essentially
+ * never overflows Gemini's output limit, so bisecting down converges on
+ * success — total failure only happens if a SINGLE page truly cannot be
+ * processed (e.g. corrupt page), which gets reported explicitly rather than
+ * silently dropped.
+ */
+async function generateChunkResilient(model, request, chunk, chunkIndex, totalChunks, depth = 0) {
+  const result = await generateOneChunkWithRetries(model, request, chunk, chunkIndex, totalChunks)
+  if (result.ok) return [result]
+
+  const canBisect = chunk.kind === 'pdf' && chunk.pageEnd > chunk.pageStart && depth < 6
+  if (!canBisect) return [result]
+
+  console.warn(`Chunk ${chunkIndex + 1}/${totalChunks} (${chunk.label}) failed after retries — splitting pages ${chunk.pageStart}-${chunk.pageEnd} in half and retrying each half (depth ${depth + 1}).`)
+
+  let halves
+  try {
+    halves = await bisectPdfChunk(chunk)
+  } catch (error) {
+    console.error(`Could not bisect ${chunk.label}:`, error?.message)
+    return [result]
+  }
+
+  const subResults = []
+  for (const half of halves) {
+    const subResult = await generateChunkResilient(model, request, half, chunkIndex, totalChunks, depth + 1)
+    subResults.push(...subResult)
+  }
+  return subResults
+}
+
 async function mapInBatches(items, worker, concurrency) {
   const results = new Array(items.length)
   let cursor = 0
@@ -250,9 +337,22 @@ function mergeChunkResults(results, request) {
   const sections = []
   const questions = []
   const seenQuestionIds = new Set()
+  const failedChunks = []
 
   results.forEach((result, index) => {
-    result.document.sections.forEach((section, sectionIndex) => {
+    if (!result.ok) {
+      failedChunks.push(result.chunk.label)
+      sections.push({
+        id: `section-${index + 1}-failed`,
+        blocks: [{
+          id: `chunk-${index + 1}-failed-notice`,
+          type: 'examBox',
+          content: `⚠ Could not generate notes for ${result.chunk.label} after ${CHUNK_MAX_RETRIES + 1} attempt(s): ${result.error?.message || 'unknown error'}. Try regenerating, or reduce PDF_CHUNK_PAGES on the backend and retry.`
+        }]
+      })
+      return
+    }
+    result.validated.document.sections.forEach((section, sectionIndex) => {
       sections.push({
         ...section,
         id: `section-${index + 1}-${sectionIndex + 1}`,
@@ -262,13 +362,17 @@ function mergeChunkResults(results, request) {
         }))
       })
     })
-    for (const question of result.questions) {
+    for (const question of result.validated.questions) {
       const id = question.id || `question-${questions.length + 1}`
       if (seenQuestionIds.has(id)) continue
       seenQuestionIds.add(id)
       questions.push({ ...question, id: `chunk-${index + 1}-${id}` })
     }
   })
+
+  if (failedChunks.length) {
+    console.warn(`${failedChunks.length}/${results.length} chunk(s) failed even after retries and were replaced with a notice: ${failedChunks.join(', ')}`)
+  }
 
   return {
     schemaVersion: 1,
@@ -282,7 +386,10 @@ function mergeChunkResults(results, request) {
       createdAt: Date.now(),
       updatedAt: Date.now()
     },
-    questions
+    questions,
+    warnings: failedChunks.length
+      ? [`${failedChunks.length} of ${results.length} source section(s) could not be generated: ${failedChunks.join(', ')}`]
+      : []
   }
 }
 
@@ -330,18 +437,20 @@ app.post('/api/ai/generate', upload.array('sourceFiles', 5), async (req, res) =>
     }
 
     const model = makeModel()
-    console.log(`Generating ${chunks.length} source chunk(s) for "${request.title}" with concurrency ${MAX_PARALLEL_CHUNKS}; max ${GEMINI_MAX_OUTPUT_TOKENS} output tokens/chunk; theoretical total ${theoreticalOutputBudget}.`)
+    console.log(`Generating ${chunks.length} source chunk(s) for "${request.title}" with concurrency ${MAX_PARALLEL_CHUNKS}; max ${GEMINI_MAX_OUTPUT_TOKENS} output tokens/chunk; up to ${CHUNK_MAX_RETRIES} retries + auto-bisection/chunk; theoretical total ${theoreticalOutputBudget}.`)
 
-    let results
-    try {
-      results = await mapInBatches(
-        chunks,
-        (chunk, index) => generateOneChunk(model, request, chunk, index, chunks.length),
-        MAX_PARALLEL_CHUNKS
-      )
-    } catch (error) {
-      console.error('Chunked Gemini generation failed:', error)
-      return sendJsonError(res, 502, 'AI generation failed while processing the complete source.', error?.message)
+    const resultGroups = await mapInBatches(
+      chunks,
+      (chunk, index) => generateChunkResilient(model, request, chunk, index, chunks.length),
+      MAX_PARALLEL_CHUNKS
+    )
+    const results = resultGroups.flat()
+
+    const succeededCount = results.filter((r) => r.ok).length
+    console.log(`Chunk generation finished for "${request.title}": ${succeededCount}/${results.length} section(s) succeeded (after bisection).`)
+
+    if (succeededCount === 0) {
+      return sendJsonError(res, 502, 'AI generation failed for every section of the source.', results[0]?.error?.message)
     }
 
     const merged = mergeChunkResults(results, request)
@@ -360,7 +469,8 @@ app.get('/api/health', (_req, res) => sendJson(res, 200, {
   pdfChunkPages: PDF_CHUNK_PAGES,
   maxParallelChunks: MAX_PARALLEL_CHUNKS,
   geminiMaxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
-  maxTotalOutputTokens: MAX_TOTAL_OUTPUT_TOKENS
+  maxTotalOutputTokens: MAX_TOTAL_OUTPUT_TOKENS,
+  chunkMaxRetries: CHUNK_MAX_RETRIES
 }))
 
 app.use('/api', (req, res) => sendJsonError(res, 404, `No API route for ${req.method} ${req.path}`))
