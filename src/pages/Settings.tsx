@@ -8,6 +8,8 @@ import { useTheme, type ThemePreference } from '@/hooks/useTheme'
 import { useToast } from '@/hooks/useToast'
 import { formatBytes } from '@/lib/format'
 import { toFriendlyMessage } from '@/lib/errors'
+import { getAIServiceConfig, saveAIServiceConfig } from '@/services/aiService'
+import type { AIProvider } from '@/types/ai'
 
 const APP_VERSION = '0.1.0'
 
@@ -39,6 +41,9 @@ export function Settings() {
   const { showToast } = useToast()
   const [storage, setStorage] = useState<{ usage: number; quota: number } | null>(null)
   const [confirmClearOpen, setConfirmClearOpen] = useState(false)
+  const initialAIConfig = getAIServiceConfig()
+  const [aiProvider, setAIProvider] = useState<AIProvider>(initialAIConfig.provider)
+  const [aiEndpoint, setAIEndpoint] = useState(initialAIConfig.endpoint)
   const [isClearing, setIsClearing] = useState(false)
 
   useEffect(() => {
@@ -97,9 +102,51 @@ export function Settings() {
         </SectionCard>
 
         <SectionCard title="AI">
-          <p className="text-sm text-ink/60 dark:text-paper/60">
-            AI provider will be configured in a later phase.
-          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="ai-provider" className="mb-1.5 block text-sm font-medium text-ink dark:text-paper">
+                Provider
+              </label>
+              <select
+                id="ai-provider"
+                value={aiProvider}
+                onChange={(event) => setAIProvider(event.target.value as AIProvider)}
+                className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3.5 text-sm text-ink dark:border-paper/15 dark:bg-white/[0.03] dark:text-paper"
+              >
+                <option value="gemini">Gemini</option>
+                <option value="openai">OpenAI</option>
+                <option value="claude">Claude</option>
+                <option value="local">Local model</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="ai-endpoint" className="mb-1.5 block text-sm font-medium text-ink dark:text-paper">
+                Backend endpoint
+              </label>
+              <input
+                id="ai-endpoint"
+                value={aiEndpoint}
+                onChange={(event) => setAIEndpoint(event.target.value)}
+                placeholder="/api/ai/generate"
+                className="h-11 w-full rounded-lg border border-ink/15 bg-white px-3.5 text-sm text-ink placeholder:text-ink/40 dark:border-paper/15 dark:bg-white/[0.03] dark:text-paper"
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <Button
+              onClick={() => {
+                try {
+                  saveAIServiceConfig({ provider: aiProvider, endpoint: aiEndpoint })
+                  showToast('AI settings saved', 'success')
+                } catch (error) {
+                  showToast(toFriendlyMessage(error, 'Could not save AI settings.'), 'error')
+                }
+              }}
+            >
+              Save AI settings
+            </Button>
+            <p className="text-xs text-ink/50 dark:text-paper/50">API keys are never stored in the frontend.</p>
+          </div>
         </SectionCard>
 
         <SectionCard title="About">
