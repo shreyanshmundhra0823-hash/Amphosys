@@ -55,3 +55,14 @@ The `/api/ai/generate` endpoint accepts `multipart/form-data` with:
 - zero or more `sourceFiles`: PDF, PNG, JPEG, WebP, or text files
 
 API failures and unknown `/api/*` routes are JSON responses, so the frontend can safely call `response.json()` even on errors.
+
+
+## Whole-PDF generation and token budget
+
+PDFs are split into 4-page chunks by default. Each chunk gets up to 65,536 Gemini output tokens, matching the current Gemini 2.5 Flash output limit. The total possible output across a generation is the number of chunks multiplied by the per-chunk limit. `MAX_TOTAL_OUTPUT_TOKENS` is a safety ceiling for that theoretical total; it does not force Gemini to spend that many tokens.
+
+Recommended Render environment variables:
+- `GEMINI_MAX_OUTPUT_TOKENS=65536`
+- `PDF_CHUNK_PAGES=4`
+- `MAX_TOTAL_OUTPUT_TOKENS=524288`
+- `MAX_PARALLEL_CHUNKS=3`
