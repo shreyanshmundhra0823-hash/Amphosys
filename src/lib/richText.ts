@@ -108,22 +108,32 @@ export function domToRuns(root: Node): TextRun[] {
   return runs
 }
 
-function fontFamilyCss(font: FontFamily): string {
+export function fontFamilyCss(font: FontFamily): string {
   switch (font) {
     case 'serif': return 'Georgia, serif'
     case 'mono': return 'ui-monospace, SFMono-Regular, Menlo, monospace'
     case 'arial': return 'Arial, sans-serif'
-    case 'times': return 'Times New Roman, serif'
-    case 'sans':
-    default: return 'system-ui, sans-serif'
+    case 'times': return '"Times New Roman", serif'
+    case 'sans': return 'system-ui, sans-serif'
+    default:
+      // Anything else is a custom imported font name (e.g. "Roboto Slab") — use it as-is.
+      return font ? `"${font}", sans-serif` : 'system-ui, sans-serif'
   }
 }
 
+const PRESET_FONT_MATCHERS: [FontFamily, RegExp][] = [
+  ['serif', /georgia/i],
+  ['mono', /mono|menlo|consolas/i],
+  ['arial', /^arial/i],
+  ['times', /times new roman/i],
+  ['sans', /system-ui/i]
+]
+
 function cssToFontFamily(value: string): FontFamily {
-  const v = value.toLowerCase()
-  if (v.includes('georgia') || v.includes('serif')) return 'serif'
-  if (v.includes('mono') || v.includes('menlo') || v.includes('consolas')) return 'mono'
-  if (v.includes('arial')) return 'arial'
-  if (v.includes('times')) return 'times'
-  return 'sans'
+  for (const [key, pattern] of PRESET_FONT_MATCHERS) {
+    if (pattern.test(value)) return key
+  }
+  // Not a known preset — treat the first quoted/comma-separated family as a custom font name.
+  const firstFamily = value.split(',')[0]?.trim().replace(/^["']|["']$/g, '')
+  return firstFamily || 'sans'
 }
