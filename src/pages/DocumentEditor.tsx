@@ -9,6 +9,7 @@ import { LoadingState } from '@/components/LoadingState'
 import { getOrCreateDocument } from '@/db/documents'
 import { getStudyMaterial } from '@/db/studyMaterials'
 import { useDocumentEditor } from '@/hooks/useDocumentEditor'
+import { initSelectionTracking } from '@/lib/selectionMemory'
 import type { StudyDocument } from '@/types/document'
 import type { StudyMaterial } from '@/types/studyMaterial'
 
@@ -16,6 +17,11 @@ export function DocumentEditor() {
   const { materialId } = useParams<{ materialId: string }>()
   const [material, setMaterial] = useState<StudyMaterial | null | undefined>(undefined)
   const [initialDoc, setInitialDoc] = useState<StudyDocument | null>(null)
+
+  useEffect(() => {
+    initSelectionTracking()
+  }, [])
+
 
   useEffect(() => {
     if (!materialId) return
@@ -139,7 +145,9 @@ function DocumentEditorInner({
         }}
         onSetSize={(size) => {
           if (!editor.activeBlockId) return
-          editor.updateBlockLive(editor.activeBlockId, (b) => (b.type === 'paragraph' ? { ...b, size } : b))
+          editor.updateBlockLive(editor.activeBlockId, (b) =>
+            b.type === 'paragraph' || b.type === 'heading' || b.type === 'subheading' ? { ...b, size } : b
+          )
         }}
       />
 
