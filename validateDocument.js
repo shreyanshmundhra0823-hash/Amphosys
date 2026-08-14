@@ -58,7 +58,7 @@ function normalizeBlock(block, index) {
       if (block.align !== undefined) requireString(block.align, `block ${id}.align`)
       if (block.size !== undefined) requireString(block.size, `block ${id}.size`)
       if (block.align !== undefined) out.align = block.align
-      if (block.size !== undefined && block.type === 'paragraph') out.size = block.size
+      if (block.size !== undefined) out.size = block.size
       return out
     }
 
