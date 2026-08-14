@@ -12,7 +12,13 @@
 
 export type TextAlign = 'left' | 'center' | 'right'
 export type TextSize = 'sm' | 'base' | 'lg'
-export type FontFamily = 'sans' | 'serif' | 'mono' | 'arial' | 'times'
+/**
+ * A small set of presets, plus any custom font family name a user has
+ * imported (e.g. via Google Fonts) in the toolbar. Presets keep their
+ * short internal keys ('serif', 'mono', ...); custom fonts are stored as
+ * their real CSS font-family name (e.g. "Roboto Slab").
+ */
+export type FontFamily = 'sans' | 'serif' | 'mono' | 'arial' | 'times' | (string & {})
 
 export interface TextRun {
   text: string
@@ -45,12 +51,14 @@ export interface HeadingBlock extends BaseBlock {
   type: 'heading'
   runs: TextRun[]
   align?: TextAlign
+  size?: TextSize
 }
 
 export interface SubheadingBlock extends BaseBlock {
   type: 'subheading'
   runs: TextRun[]
   align?: TextAlign
+  size?: TextSize
 }
 
 export interface ParagraphBlock extends BaseBlock {
