@@ -1,12 +1,12 @@
 {
   "name": "rubisco-medical-library",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.9.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "start": "node server.js",
+    "dev": "vite"
   },
   "dependencies": {
     "dexie": "^4.0.8",
@@ -14,7 +14,11 @@
     "lucide-react": "^0.441.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2"
+    "react-router-dom": "^6.26.2",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "dotenv": "^16.4.5",
+    "@google/generative-ai": "^0.21.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.5",
@@ -27,5 +31,8 @@
     "typescript": "^5.5.4",
     "vite": "^5.4.2",
     "vite-plugin-pwa": "^0.20.5"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
