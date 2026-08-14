@@ -123,6 +123,7 @@ function buildPrompt(request, chunkInfo = '') {
     sourceText ? `Source text:\n${sourceText}` : '',
     `IMPORTANT COVERAGE RULE: This is one chunk of a larger source. Extract and preserve ALL medically meaningful information present in this supplied chunk. Do not stop early, do not give only an overview, and do not omit tables, classifications, mechanisms, examples, exceptions, diagnostic points, treatment points, or exam-relevant details. Organize the material clearly instead of copying the source verbatim.`,
     `STRICT ANTI-SUMMARIZATION RULE: A short, summarized, or "overview" response is treated as a FAILED response, not a valid one. If this chunk contains multiple headings, sub-topics, bullet points, or table rows, your output MUST contain a corresponding block for EVERY one of them — not just the first topic or the first few bullets. Do not truncate a list partway through. Do not condense a comparison table into prose. If you are running low on output budget, prioritize finishing coverage of every topic over elaborate prose for any single topic.`,
+    `FORBIDDEN OUTPUT SHAPE: Do NOT respond with a single bullet/numbered list where each item is just a topic name plus a short clause (i.e. a table of contents or syllabus outline standing in for the notes). That is a FAILED response even if it lists every topic in the chunk, because it names the subjects without teaching any of them. Every topic/heading present in the source MUST become its own heading block followed by real explanatory content underneath (paragraphs, sub-bullets of actual facts, tables, mnemonics, exam boxes) — definitions, mechanisms, values, criteria, steps, exceptions — not just the topic's name.`,
     `Do not claim to cover pages that are not supplied in this chunk. Do not refer to other chunks.`
   ].filter(Boolean).join('\n\n')
 }
@@ -280,6 +281,19 @@ function countDocumentWords(document) {
   return total
 }
 
+/** Blocks that represent actual developed explanation, as opposed to a block that merely names a topic (a list item). */
+const DEVELOPED_CONTENT_TYPES = new Set(['heading', 'subheading', 'paragraph', 'table', 'mnemonic', 'examBox', 'flowchart'])
+
+function countDevelopedContentBlocks(document) {
+  let count = 0
+  for (const section of document.sections || []) {
+    for (const block of section.blocks || []) {
+      if (DEVELOPED_CONTENT_TYPES.has(block.type)) count += 1
+    }
+  }
+  return count
+}
+
 async function generateOneChunk(model, request, chunk, chunkIndex, totalChunks) {
   const chunkInfo = `Chunk ${chunkIndex + 1} of ${totalChunks}: ${chunk.label}`
   const prompt = buildPrompt({ ...request, sourceText: chunk.kind === 'text' ? chunk.text : '' }, chunkInfo)
@@ -332,6 +346,22 @@ async function generateOneChunk(model, request, chunk, chunkIndex, totalChunks) 
       if (ratio < COVERAGE_MIN_RATIO) {
         throw new Error(
           `Output for ${chunk.label} covers only ~${Math.round(ratio * 100)}% of the source (source ~${sourceWords} words, notes ~${outputWords} words) — looks like a summary, not exhaustive notes.`
+        )
+      }
+
+      // Structural check: a dense single bullet list of topic names can pass
+      // the word-count ratio above (its total word count can look fine)
+      // while still being a table of contents rather than real notes — it
+      // names every topic without teaching any of them. Require a minimum
+      // amount of actually-developed content (headings/paragraphs/tables/
+      // mnemonics/exam boxes/flowcharts), scaled to source length, so a
+      // topic-index shaped response is caught and retried like any other
+      // incomplete result.
+      const developedBlocks = countDevelopedContentBlocks(validated.document)
+      const minDevelopedBlocks = Math.max(2, Math.ceil(sourceWords / 150))
+      if (developedBlocks < minDevelopedBlocks) {
+        throw new Error(
+          `Output for ${chunk.label} has only ${developedBlocks} developed content block(s) (heading/paragraph/table/mnemonic/examBox/flowchart) for ~${sourceWords} source words (expected at least ${minDevelopedBlocks}) — looks like a table of contents, not developed notes.`
         )
       }
     }
