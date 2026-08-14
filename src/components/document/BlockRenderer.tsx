@@ -43,6 +43,7 @@ export function BlockRenderer({
   return (
     <BlockShell
       label={blockTypeLabels[block.type]}
+      blockType={block.type}
       isFirst={isFirst}
       isLast={isLast}
       onMoveUp={onMoveUp}

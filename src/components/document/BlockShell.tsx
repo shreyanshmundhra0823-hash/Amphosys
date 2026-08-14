@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 
 interface BlockShellProps {
   label: string
+  blockType: string
   isFirst: boolean
   isLast: boolean
   onMoveUp: () => void
@@ -20,6 +21,7 @@ interface BlockShellProps {
  */
 export function BlockShell({
   label,
+  blockType,
   isFirst,
   isLast,
   onMoveUp,
@@ -29,7 +31,8 @@ export function BlockShell({
   children
 }: BlockShellProps) {
   return (
-    <div className="document-block group relative rounded-lg p-2 outline outline-1 outline-transparent transition-colors hover:outline-ink/10 focus-within:outline-brand-300 dark:hover:outline-paper/10">
+    <div data-block-type={blockType}
+      className="document-block group relative rounded-lg p-2 outline outline-1 outline-transparent transition-colors hover:outline-ink/10 focus-within:outline-brand-300 dark:hover:outline-paper/10">
       <div className="mb-1 flex items-center justify-between opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <span className="text-[10px] font-semibold uppercase tracking-wide text-ink/35 dark:text-paper/35">
           {label}
