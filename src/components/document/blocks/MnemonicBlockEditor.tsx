@@ -19,7 +19,7 @@ export function MnemonicBlockEditor({ block, onChange, onFocusBlock, onBlurBlock
   }
 
   return (
-    <div className="rounded-lg border-l-4 border-brand-500 bg-brand-50/60 p-3.5 dark:bg-brand-500/10">
+    <div className="rounded-lg border-2 border-brand-500 bg-brand-50/60 p-3.5 dark:bg-brand-500/10">
       <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-brand-700 dark:text-brand-300">
         Mnemonic
       </p>
