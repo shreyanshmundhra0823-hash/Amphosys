@@ -4,6 +4,7 @@ import multer from 'multer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { PDFDocument } from 'pdf-lib'
+import pdfParse from 'pdf-parse'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { extractJson } from './extractJson.js'
 import { validateDocumentPayload } from './validateDocument.js'
@@ -16,12 +17,21 @@ const PORT = Number(process.env.PORT || 3000)
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite'
 const MAX_FILE_MB = Math.min(Math.max(Number(process.env.MAX_FILE_MB || 25), 1), 50)
-const PDF_CHUNK_PAGES = Math.min(Math.max(Number(process.env.PDF_CHUNK_PAGES || 3), 1), 12)
+const PDF_CHUNK_PAGES = Math.min(Math.max(Number(process.env.PDF_CHUNK_PAGES || 1), 1), 12)
 const MAX_PARALLEL_CHUNKS = Math.min(Math.max(Number(process.env.MAX_PARALLEL_CHUNKS || 2), 1), 5)
 const GEMINI_MAX_OUTPUT_TOKENS = Math.min(Math.max(Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 65536), 8192), 65536)
 const TEXT_CHUNK_CHARS = Math.min(Math.max(Number(process.env.TEXT_CHUNK_CHARS || 30000), 10000), 60000)
 const MAX_TOTAL_OUTPUT_TOKENS = Math.max(Number(process.env.MAX_TOTAL_OUTPUT_TOKENS || 524288), GEMINI_MAX_OUTPUT_TOKENS)
 const CHUNK_MAX_RETRIES = Math.min(Math.max(Number(process.env.CHUNK_MAX_RETRIES || 3), 0), 5)
+// If a chunk's structured output has fewer words than this fraction of the
+// source chunk's own word count, we treat it as an incomplete/summarized
+// result — even though the JSON was technically valid — and retry/bisect it
+// exactly like a truncation failure. This catches the model quietly
+// producing a short "overview" instead of exhaustive notes.
+const COVERAGE_MIN_RATIO = Math.min(Math.max(Number(process.env.COVERAGE_MIN_RATIO || 0.6), 0), 1)
+// Below this many source words, we don't bother enforcing the ratio (a
+// near-empty page/chunk can legitimately produce a short result).
+const COVERAGE_MIN_SOURCE_WORDS = Math.max(Number(process.env.COVERAGE_MIN_SOURCE_WORDS || 40), 0)
 
 if (!GEMINI_API_KEY) {
   console.error('FATAL: GEMINI_API_KEY is not set. Add it to the Render environment variables.')
@@ -112,6 +122,7 @@ function buildPrompt(request, chunkInfo = '') {
     chunkInfo,
     sourceText ? `Source text:\n${sourceText}` : '',
     `IMPORTANT COVERAGE RULE: This is one chunk of a larger source. Extract and preserve ALL medically meaningful information present in this supplied chunk. Do not stop early, do not give only an overview, and do not omit tables, classifications, mechanisms, examples, exceptions, diagnostic points, treatment points, or exam-relevant details. Organize the material clearly instead of copying the source verbatim.`,
+    `STRICT ANTI-SUMMARIZATION RULE: A short, summarized, or "overview" response is treated as a FAILED response, not a valid one. If this chunk contains multiple headings, sub-topics, bullet points, or table rows, your output MUST contain a corresponding block for EVERY one of them — not just the first topic or the first few bullets. Do not truncate a list partway through. Do not condense a comparison table into prose. If you are running low on output budget, prioritize finishing coverage of every topic over elaborate prose for any single topic.`,
     `Do not claim to cover pages that are not supplied in this chunk. Do not refer to other chunks.`
   ].filter(Boolean).join('\n\n')
 }
@@ -216,6 +227,59 @@ function splitTextIntoChunks(text) {
   return chunks
 }
 
+function countWords(text) {
+  if (!text) return 0
+  const matches = String(text).trim().match(/\S+/g)
+  return matches ? matches.length : 0
+}
+
+async function estimatePdfWordCount(buffer) {
+  try {
+    const { text } = await pdfParse(buffer)
+    return countWords(text)
+  } catch (error) {
+    console.warn('Could not extract PDF text for coverage check:', error?.message)
+    return 0
+  }
+}
+
+/** Sums up words across every text-bearing field in a generated document, so we can compare it against the source. */
+function countDocumentWords(document) {
+  let total = 0
+  const addRuns = (runs) => { (runs || []).forEach((r) => { total += countWords(r?.text) }) }
+
+  for (const section of document.sections || []) {
+    for (const block of section.blocks || []) {
+      switch (block.type) {
+        case 'heading':
+        case 'subheading':
+        case 'paragraph':
+          addRuns(block.runs)
+          break
+        case 'bulletList':
+        case 'numberedList':
+          (block.items || []).forEach(addRuns)
+          break
+        case 'table':
+          (block.rows || []).forEach((row) => (row || []).forEach((cell) => { total += countWords(cell) }))
+          break
+        case 'flowchart':
+          (block.nodes || []).forEach((n) => { total += countWords(n?.text) })
+          break
+        case 'mnemonic':
+          total += countWords(block.title) + countWords(block.content)
+          break
+        case 'examBox':
+          total += countWords(block.content)
+          break
+        default:
+          break
+      }
+    }
+  }
+  return total
+}
+
 async function generateOneChunk(model, request, chunk, chunkIndex, totalChunks) {
   const chunkInfo = `Chunk ${chunkIndex + 1} of ${totalChunks}: ${chunk.label}`
   const prompt = buildPrompt({ ...request, sourceText: chunk.kind === 'text' ? chunk.text : '' }, chunkInfo)
@@ -247,14 +311,33 @@ async function generateOneChunk(model, request, chunk, chunkIndex, totalChunks) 
     throw new Error(`Gemini returned incomplete JSON for ${chunk.label}: ${error?.message || 'invalid JSON'}`)
   }
 
+  let validated
   try {
-    return validateDocumentPayload(parsed, {
+    validated = validateDocumentPayload(parsed, {
       studyMaterialId: 'temporary-chunk-material',
       title: request.title
     })
   } catch (error) {
     throw new Error(`Gemini output failed validation for ${chunk.label}: ${error?.message || 'invalid document'}`)
   }
+
+  // Coverage check: catches the model quietly writing a short "overview"
+  // instead of exhaustive notes — a failure mode that produces perfectly
+  // valid JSON, so nothing above this point would ever catch it.
+  if (chunk.kind === 'pdf') {
+    const sourceWords = await estimatePdfWordCount(chunk.data)
+    const outputWords = countDocumentWords(validated.document)
+    if (sourceWords >= COVERAGE_MIN_SOURCE_WORDS) {
+      const ratio = sourceWords > 0 ? outputWords / sourceWords : 1
+      if (ratio < COVERAGE_MIN_RATIO) {
+        throw new Error(
+          `Output for ${chunk.label} covers only ~${Math.round(ratio * 100)}% of the source (source ~${sourceWords} words, notes ~${outputWords} words) — looks like a summary, not exhaustive notes.`
+        )
+      }
+    }
+  }
+
+  return validated
 }
 
 function sleep(ms) {
@@ -470,7 +553,10 @@ app.get('/api/health', (_req, res) => sendJson(res, 200, {
   maxParallelChunks: MAX_PARALLEL_CHUNKS,
   geminiMaxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
   maxTotalOutputTokens: MAX_TOTAL_OUTPUT_TOKENS,
-  chunkMaxRetries: CHUNK_MAX_RETRIES
+  chunkMaxRetries: CHUNK_MAX_RETRIES,
+  coverageMinRatio: COVERAGE_MIN_RATIO,
+  coverageMinSourceWords: COVERAGE_MIN_SOURCE_WORDS,
+  version: 'v4-coverage-check'
 }))
 
 app.use('/api', (req, res) => sendJsonError(res, 404, `No API route for ${req.method} ${req.path}`))
