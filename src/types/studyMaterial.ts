@@ -38,6 +38,9 @@ export interface StudyMaterial {
   createdAt: number
   updatedAt: number
   lastOpenedAt?: number
+  tags?: string[]
+  favorite?: boolean
+  progress?: number
 }
 
 export interface CreateStudyMaterialInput {

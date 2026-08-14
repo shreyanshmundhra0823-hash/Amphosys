@@ -1,23 +1,22 @@
-/**
- * Types for the future revision/question engine (Phase 2+). Not implemented
- * or stored anywhere yet — declared now so the database layer can add these
- * tables later without reshaping StudyMaterial or StudyDocument.
- */
-
 export type RevisionRound = 'learn' | 'recall' | 'test'
+export type QuestionType = 'shortAnswer' | 'mcq'
 
 export interface RevisionQuestion {
   id: string
   studyMaterialId: string
   round: RevisionRound
+  type: QuestionType
   prompt: string
   answer: string
+  options?: string[]
   category?: string
+  createdAt: number
 }
 
 export interface UserAnswer {
   id: string
   questionId: string
+  studyMaterialId: string
   givenAnswer: string
   isCorrect: boolean
   answeredAt: number
